@@ -8,8 +8,24 @@ resource "aws_s3_bucket_acl" "main" {
   acl    = "private"
 }
 
+resource "aws_s3_bucket_ownership_controls" "main" {
+  bucket = aws_s3_bucket.main.id
+  rule {
+    object_ownership = "BucketOwnerPreferred"
+  }
+}
 
-resource "aws_s3_bucket_website_configuration" "main" {
+resource "aws_s3_bucket_public_access_block" "main" {
+  bucket = aws_s3_bucket.main.id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_website_configuration" "host_only" {
+  count  = startswith(var.redirect_target, "http") ? 0 : 1
   bucket = aws_s3_bucket.main.id
 
   redirect_all_requests_to {
@@ -17,6 +33,27 @@ resource "aws_s3_bucket_website_configuration" "main" {
   }
 }
 
+data "corefunc_url_parse" "url" {
+  count = startswith(var.redirect_target, "http") ? 1 : 0
+  url   = var.redirect_target
+}
+
+resource "aws_s3_bucket_website_configuration" "url" {
+  count  = startswith(var.redirect_target, "http") ? 1 : 0
+  bucket = aws_s3_bucket.main.id
+
+  index_document {
+    suffix = "unused.html"
+  }
+
+  routing_rule {
+    redirect {
+      host_name        = data.corefunc_url_parse.url[0].host
+      protocol         = data.corefunc_url_parse.url[0].scheme
+      replace_key_with = "${data.corefunc_url_parse.url[0].path}${data.corefunc_url_parse.url[0].search}${data.corefunc_url_parse.url[0].hash}"
+    }
+  }
+}
 
 resource "aws_s3_bucket" "main" {
   provider = aws.main
